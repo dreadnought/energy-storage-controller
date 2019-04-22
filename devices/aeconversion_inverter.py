@@ -143,7 +143,7 @@ class AEConversionInverter:
                                                        self.device_parameters['max_watt'],
                                                        self.device_parameters['version']))
 
-        if self.device_parameters['type'] not in ('250-45', '350-60', '350-90', '500-90'):
+        if self.device_parameters['type'] not in ('250-45','PV350W', '350-60', '350-90', '500-90'):
             print('unsupported device type')
             self.device_parameters = False
             return False
