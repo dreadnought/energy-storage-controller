@@ -6,6 +6,12 @@ import time
 
 class SMAEnergyManager:
     def __init__(self):
+        self.sock = None
+        self.connect()
+
+    def connect(self):
+        if self.sock:
+            self.sock.close()
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(('', 9522))
@@ -84,6 +90,21 @@ class SMAEnergyManagerThread(threading.Thread):
                 self.data[serial_number] = data
         print('SMAEnergyManagerThread stopped')
 
+    def is_healthy(self):
+        if not self.is_running:
+            return False
+        if len(self.data) == 0:
+            return False
+        t_diff = time.time() - self.data['time']
+        if t_diff > 120.0:
+            print('SMAEnergyManagerThread: no data for %s seconds' % int(time.time() - self.data['time']))
+            return False
+        elif t_diff > 60.0:
+            print('SMAEnergyManagerThread: reconnecting')
+            self.smaem.connect()
+            return False
+
+        return True
 
 if __name__ == '__main__':
     from pprint import pprint
