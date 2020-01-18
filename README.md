@@ -23,6 +23,31 @@ Other implementations:
 - [SMA-EM](https://github.com/datenschuft/SMA-EM) (Python)
 
 
+### Smart BMS
+
+Usage: Monitor battery cell voltages
+
+Interface: UART over USB
+
+Other implementations:
+- [BatteryMonitor](https://github.com/simat/BatteryMonitor) (Python)
+
+### Relays
+
+Usage: Turn on/off AC for inverter.
+
+### Smart Plug
+
+Usage: Turn on/off AC for charger and measure it's power consumption.
+
+## Controller
+
+### Charge Controller
+
+Controls a charger via a PWM signal, to consume all power that would otherwise be exported to the grid.
+
+#### References
+
 ## Tools
 
 ### aec-cli.py

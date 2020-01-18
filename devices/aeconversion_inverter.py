@@ -349,15 +349,17 @@ class AEConversionInverter:
 
 
 class AEConversionInverterThread(threading.Thread):
-    def __init__(self, config):
+    def __init__(self, config, metrics):
         threading.Thread.__init__(self)
         self.is_running = False
         self.start_time = None
         self.connected = False
+        self.last_connection_attempt = 0
         self.data = {}
         self.command_queue = []
         self.inverter = AEConversionInverter(device=config['device'],
                                              inverter_id=config['inverter_id'])
+        self.metrics = metrics
 
     def stop(self):
         print('AEConversionInverterThread: stopping...')
@@ -371,6 +373,7 @@ class AEConversionInverterThread(threading.Thread):
         while self.is_running:
             if not self.inverter.device_parameters:
                 try:
+                    self.last_connection_attempt = time.time()
                     self.inverter.connect()
                 except Exception as e:
                     print('failed to connect')
@@ -417,6 +420,21 @@ class AEConversionInverterThread(threading.Thread):
             if data is not False:
                 self.is_connected = True
                 self.data = data
+                points = []
+                data_copy = data.copy()
+                ts = data_copy['time']
+                del data_copy['time']
+                points.append({
+                    "measurement": "AEConversionInverterData",
+                    "tags": {
+                        "inverter_id": self.inverter.inverter_id,
+                        "dev": self.inverter.device,
+                    },
+                    "time": ts,
+                    "fields": data_copy,
+                })
+                self.metrics.write_metric(points=points)
+
             time.sleep(10)
         print('AEConversionInverterThread: stopped')
 
@@ -431,12 +449,13 @@ class AEConversionInverterThread(threading.Thread):
         t_diff = time.time() - self.data['time']
         if t_diff > 120.0:
             print('AEConversionInverterThread: no data for %s seconds' % int(time.time() - self.data['time']))
-            return False
-        elif t_diff > 60.0:
+        if t_diff > 60.0:
             print("reconnecting")
             self.inverter.stop()
-            self.inverter.connect()
-            time.sleep(10)
+            if time.time() - self.last_connection_attempt < 60:
+                self.last_connection_attempt = time.time()
+                self.inverter.connect()
+                time.sleep(10)
             return False
 
         return True

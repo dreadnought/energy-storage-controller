@@ -7,7 +7,6 @@ import time
 class SMAEnergyManager:
     def __init__(self):
         self.sock = None
-        self.connect()
 
     def connect(self):
         if self.sock:
@@ -59,11 +58,11 @@ class SMAEnergyManager:
 
     def stop(self):
         self.sock.close()
-        print('socket closed')
+        print('SMAEnergyManager: socket closed')
 
 
 class SMAEnergyManagerThread(threading.Thread):
-    def __init__(self, serial_number):
+    def __init__(self, serial_number, metrics):
         threading.Thread.__init__(self)
         self.is_running = False
         self.smaem = SMAEnergyManager()
@@ -73,6 +72,8 @@ class SMAEnergyManagerThread(threading.Thread):
             self.serial_number = serial_number
         else:
             self.serial_number = None
+        self.metrics = metrics
+        self.last_metrics = 0
 
     def stop(self):
         print('SMAEnergyManagerThread stopping...')
@@ -82,10 +83,26 @@ class SMAEnergyManagerThread(threading.Thread):
     def run(self):
         self.is_running = True
         self.start_time = time.time()
+        self.smaem.connect()
         while self.is_running:
             serial_number, data = self.smaem.read(phases=False)
             if self.serial_number:
                 self.data = data
+                points = []
+                data_copy = data.copy()
+                ts = data_copy['time']
+                del data_copy['time']
+                points.append({
+                        "measurement": "SMAEnergyManagerSum",
+                        "tags": {
+                            "serial_number": self.serial_number,
+                        },
+                        "time": ts,
+                        "fields": data_copy,
+                })
+                if time.time() - self.last_metrics > 5 and self.metrics:
+                    self.metrics.write_metric(points=points)
+                    self.last_metrics = time.time()
             else:
                 self.data[serial_number] = data
         print('SMAEnergyManagerThread stopped')

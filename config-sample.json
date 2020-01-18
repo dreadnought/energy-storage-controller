@@ -1,0 +1,18 @@
+{
+  "aeconversion_inverter": {
+    "inverter_id": 123,
+    "device": "/dev/serial/by-id/usb",
+    "limit_step": 50
+  },
+  "sma_energy_manager": {
+    "serial_number": 1234567890
+  },
+  "influxdb": {
+    "database_name": "esc"
+  },
+  "charger": {
+    "smartplug_ip": "192.168.1.2",
+    "smartplug_username": "admin",
+    "smartplug_password": "password"
+  }
+}
