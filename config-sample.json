@@ -7,6 +7,13 @@
   "sma_energy_manager": {
     "serial_number": 1234567890
   },
+  "battery": {
+    "min_voltage_comment": "3.3x14",
+    "min_voltage": 46.2,
+    "max_voltage_comment": "4.1x14",
+    "max_voltage": 57.4,
+    "max_discharge_watt": 500
+  },
   "influxdb": {
     "database_name": "esc"
   },
@@ -14,5 +21,8 @@
     "smartplug_ip": "192.168.1.2",
     "smartplug_username": "admin",
     "smartplug_password": "password"
+  },
+  "bms": {
+    "mac_address": "AA:BB:CC:DD:EE:FF"
   }
 }

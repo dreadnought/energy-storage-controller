@@ -6,7 +6,6 @@ import threading
 import gatt
 import sys
 
-from metrics import Metrics
 
 
 class SmartBMS:
@@ -322,5 +321,4 @@ class SmartBMSThread(threading.Thread):
         print('SmartBMSThread: stopping')
         self.is_running = False
         self.bt_thread.manager.stop()
-
 
