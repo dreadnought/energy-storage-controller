@@ -2,7 +2,7 @@ import datetime
 import time
 import sys
 
-from devices.pwm import PWM
+from devices.pwm_rockpis import PWM
 from devices.sma_energy_manager import SMAEnergyManagerThread
 
 
@@ -58,7 +58,7 @@ class ChargeController():
             1170: 3.0,  # +110
             1270: 3.2,  # +100
             # the pwm pin supports max. 3.2v
-            1600: 0.1,  # voltages <0.4 set the charger to its maximum
+            1750: 0.1,  # voltages <0.4 set the charger to its maximum
         }
         self.min_level = min(self.levels.keys())
         self.off_throttler = Throttler(60 * 5)
@@ -119,7 +119,8 @@ class ChargeController():
                 continue
             elif time.time() - self.energy_meter.data['time'] > 60:
                 self.logger.error("Energy meter thread dead")
-                sys.exit(1)
+                self.energy_meter.stop()
+                self.init_energy_meter()
 
             ts = time.time()
             balance = (self.energy_meter.data['p_import'] * -1) + self.energy_meter.data['p_export']
