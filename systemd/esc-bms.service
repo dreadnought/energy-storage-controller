@@ -1,0 +1,13 @@
+[Unit]
+Description=Smart BMS Bluetooth
+After=bluetooth.target time-sync.target influxd.service
+
+[Service]
+Type=simple
+ExecStart=/root/esc/devices/smart_bms.py
+Restart=on-failure
+RestartSec=10s 
+
+[Install]
+WantedBy=multi-user.target
+

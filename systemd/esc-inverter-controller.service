@@ -1,0 +1,12 @@
+[Unit]
+Description=Inverter Controller
+After=network.target time-sync.target influxd.service
+
+[Service]
+Type=simple
+ExecStart=/root/esc/inverter_controller.py
+Restart=on-failure
+RestartSec=10s 
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=Charge Controller
+After=network.target time-sync.target influxd.service
+
+[Service]
+Type=simple
+ExecStart=/root/esc/charge_controller.py
+Restart=on-failure
+RestartSec=60s
+
+[Install]
+WantedBy=multi-user.target
