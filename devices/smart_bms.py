@@ -4,8 +4,6 @@ import struct
 import time
 import threading
 import gatt
-import sys
-
 
 
 class SmartBMS:
@@ -16,10 +14,11 @@ class SmartBMS:
         'cell_voltages': [4, 'C']
     }
 
-    def __init__(self, device):
+    def __init__(self, device, logger):
         self.serial = None
         self.device = device
         self.status = None
+        self.logger = logger
 
     def connect(self, verbose=True):
         self.serial = serial.Serial(
@@ -120,7 +119,7 @@ class SmartBMS:
         response = self.send_command('cell_voltages')
         if response is False:
             print('failed to get voltages')
-            return
+            return False
         return self.parse_cell_voltages(response)
 
     def parse_cell_voltages(self, response_bytes):
@@ -128,7 +127,11 @@ class SmartBMS:
         # print(len(response_bytes), '->', num_cells)
         cells = ['H' for cell in range(0, num_cells)]
 
-        parts = struct.unpack('>%s' % (' '.join(cells)), response_bytes)
+        try:
+            parts = struct.unpack('>%s' % (' '.join(cells)), response_bytes)
+        except struct.error:
+            self.logger.error("failed to parse cell voltages, %s bytes for %s cells" % (len(response_bytes), num_cells))
+            return False
         x = 1
         voltages = {}
         for part in parts:
@@ -146,27 +149,27 @@ class SmartBMS:
 class AnyDevice(gatt.Device):
     def connect_succeeded(self):
         super().connect_succeeded()
-        print("[%s] Connected" % (self.mac_address))
+        self.logger.info("[%s] Connected" % (self.mac_address))
 
     def connect_failed(self, error):
         super().connect_failed(error)
-        print("[%s] Connection failed: %s" % (self.mac_address, str(error)))
+        self.logger.error("[%s] Connection failed: %s" % (self.mac_address, str(error)))
 
     def disconnect_succeeded(self):
         super().disconnect_succeeded()
         # self.is_disconnected = True
-        print("[%s] Disconnected" % (self.mac_address))
+        self.logger.warning("[%s] Disconnected" % (self.mac_address))
         self.connect()
 
     def services_resolved(self):
         super().services_resolved()
         self.response_queue = []
 
-        print("[%s] Resolved services" % (self.mac_address))
+        self.logger.info("[%s] Resolved services" % (self.mac_address))
         for service in self.services:
             if not service.uuid.startswith("0000ff00"):
                 continue
-            print("[%s]  Service [%s]" % (self.mac_address, service.uuid))
+            self.logger.debug("[%s]  Service [%s]" % (self.mac_address, service.uuid))
             for characteristic in service.characteristics:
                 if characteristic.uuid.startswith("0000ff01"):
                     self.c_read = characteristic
@@ -175,9 +178,9 @@ class AnyDevice(gatt.Device):
                     self.c_write = characteristic
                 else:
                     continue
-                print("[%s]    Characteristic [%s]" % (self.mac_address, characteristic.uuid))
+                self.logger.debug("[%s]    Characteristic [%s]" % (self.mac_address, characteristic.uuid))
 
-        print(self.c_read, "\n", self.c_write)
+        self.logger.debug("%s\n%s" % (self.c_read, self.c_write))
 
     def characteristic_write_value_succeeded(self, characteristic):
         # print("write succeeded")
@@ -185,7 +188,7 @@ class AnyDevice(gatt.Device):
         pass
 
     def characteristic_write_value_failed(self, characteristic, error):
-        print("write failed", error)
+        self.logger.error("write failed", error)
 
     def characteristic_value_updated(self, characteristic, value):
         # print("value:", len(value), repr(value))
@@ -193,40 +196,43 @@ class AnyDevice(gatt.Device):
 
 
 class BluetoothThread(threading.Thread):
-    def __init__(self, mac_address):
+    def __init__(self, mac_address, logger):
         threading.Thread.__init__(self)
         self.is_running = False
         self.mac_address = mac_address
+        self.logger = logger
 
     def run(self):
         self.is_running = True
         self.manager = gatt.DeviceManager(adapter_name='hci0')
         self.device = AnyDevice(mac_address=self.mac_address, manager=self.manager)
+        self.device.logger = self.logger
         # self.is_disconnected = False
         self.device.connect()
         try:
             self.manager.run()
         except KeyboardInterrupt:
-            print('interrupt')
+            self.logger.warning('interrupt')
             self.manager.stop()
         self.is_running = False
-        print('BluetoothThread: stopped')
+        self.logger.info('BluetoothThread: stopped')
 
     def write(self, request_bytes):
         self.device.c_write.write_value(request_bytes)
 
 
 class SmartBMSThread(threading.Thread):
-    def __init__(self, mac_address, metrics):
+    def __init__(self, mac_address, metrics, logger):
         threading.Thread.__init__(self)
         self.is_running = False
         self.mac_address = mac_address
         self.metrics = metrics
+        self.logger = logger
         self.data = {'status': None, 'cell_voltages': None}
         self.last_run_completed = None
 
     def init_bt_thread(self):
-        self.bt_thread = BluetoothThread(mac_address=self.mac_address)
+        self.bt_thread = BluetoothThread(mac_address=self.mac_address, logger=self.logger)
         self.bt_thread.start()
 
     def run(self):
@@ -234,14 +240,14 @@ class SmartBMSThread(threading.Thread):
         self.init_bt_thread()
         time.sleep(1)
 
-        smart_bms = SmartBMS(device=None)
+        smart_bms = SmartBMS(device=None, logger=self.logger)
         incomplete = None
 
         while self.is_running and self.bt_thread.is_running:
-            print('==== start of run ====', flush=True)
+            self.logger.debug('==== start of run ====')
             updated_data = []
             if not self.bt_thread.device.is_connected():
-                print('not connected')
+                self.logger.info('not connected')
                 time.sleep(5)
                 continue
             # print('status')
@@ -277,9 +283,10 @@ class SmartBMSThread(threading.Thread):
                     updated_data.append(name)
                 elif name == 'cell_voltages':
                     cell_voltages = smart_bms.parse_cell_voltages(response_bytes)
-                    cell_voltages['time'] = ts
-                    self.data[name] = cell_voltages
-                    updated_data.append(name)
+                    if cell_voltages:
+                        cell_voltages['time'] = ts
+                        self.data[name] = cell_voltages
+                        updated_data.append(name)
 
             if updated_data:
                 for name in updated_data:
@@ -311,14 +318,14 @@ class SmartBMSThread(threading.Thread):
                             })
                     self.metrics.write_metric(points=points)
 
-            print('==== end of run ====', flush=True)
+            self.logger.debug('==== end of run ====', flush=True)
             self.last_run_completed = time.time()
             time.sleep(15)
-        print('SmartBMSThread: stopped')
+        self.logger.info('SmartBMSThread: stopped')
         self.is_running = False
 
     def stop(self):
-        print('SmartBMSThread: stopping')
+        self.logger.info('SmartBMSThread: stopping')
         self.is_running = False
         self.bt_thread.manager.stop()
 

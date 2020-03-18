@@ -1,5 +1,7 @@
-pyserial==3.4
 texttable==1.6.1
-influxdb
-gatt==0.2.7
+influxdb==5.2.3
+pyserial==3.4
 pyedimax==0.1
+# For smart BMS
+gatt==0.2.7
+cysystemd==1.1.1
