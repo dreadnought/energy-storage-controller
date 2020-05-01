@@ -1,9 +1,10 @@
 import datetime
 import time
-import sys
 
 from devices.pwm_rockpis import PWM
 from devices.sma_energy_manager import SMAEnergyManagerThread
+
+from cysystemd.daemon import notify, Notification
 
 
 class Throttler():
@@ -33,10 +34,10 @@ class Throttler():
 
 class ChargeController():
     def __init__(self, config, logger, metrics, smart_plug):
-        self.config=config
+        self.config = config
         self.logger = logger
         self.metrics = metrics
-        self.smart_plug=smart_plug
+        self.smart_plug = smart_plug
         self.pwm = PWM(logger=logger)
 
         self.logger.info("%s %s" % (self.smart_plug.state, self.smart_plug.now_power))
@@ -102,16 +103,19 @@ class ChargeController():
     def sleep_until_tomorrow(self):
         now = datetime.datetime.utcnow()
         tomorrow = now.replace(hour=4, minute=0) + datetime.timedelta(days=1)
-        seconds = tomorrow.timestamp() - time.time()
-        self.logger.info("Sleeping %0.1f hours" % (seconds / 3600))
+        seconds_left = tomorrow.timestamp() - time.time()
+        self.logger.info("Sleeping %0.1f hours" % (seconds_left / 3600))
         self.energy_meter.stop()
-        time.sleep(seconds)
+        while seconds_left > 0:
+            seconds_left -= 30
+            notify(Notification.WATCHDOG)
         self.logger.info("Waking up...")
         self.init_energy_meter()
 
     def loop(self):
         WATT_RESERVED = 50  # leave power for other devices
         LOOP_RUN_SEC = 30
+        notify(Notification.READY)
         while True:
             if len(self.energy_meter.data) == 0:
                 self.logger.warning("No energy meter data")
@@ -121,6 +125,10 @@ class ChargeController():
                 self.logger.error("Energy meter thread dead")
                 self.energy_meter.stop()
                 self.init_energy_meter()
+                time.sleep(10)
+                continue
+
+            notify(Notification.WATCHDOG)
 
             ts = time.time()
             balance = (self.energy_meter.data['p_import'] * -1) + self.energy_meter.data['p_export']
@@ -169,4 +177,3 @@ class ChargeController():
             self.metrics.write_metric(points=points)
 
             time.sleep(LOOP_RUN_SEC)
-
