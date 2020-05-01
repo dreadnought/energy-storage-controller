@@ -84,7 +84,7 @@ class ChargeController():
 
         if level == 0:
             # the requested watt is lower than the lowest level that the charger supports
-            self.logger.info("Turning off smart plug")
+            self.logger.info("Turning off smart plug, %s watt requested" % watt)
             self.smart_plug.state = 'OFF'
             # set it to the lowest level, for the next start
             level = self.min_level
@@ -117,6 +117,7 @@ class ChargeController():
         while seconds_left > 0:
             seconds_left -= 30
             notify(Notification.WATCHDOG)
+            time.sleep(30)
         self.logger.info("Waking up...")
         self.init_energy_meter()
 
