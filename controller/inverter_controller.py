@@ -1,10 +1,9 @@
 #!/usr/bin/python3
 import time
-import math
-from pprint import pprint
-import traceback
 from datetime import datetime
 import pytz
+from cysystemd.daemon import notify, Notification
+import signal
 
 from devices.sma_energy_manager import SMAEnergyManagerThread
 from devices.aeconversion_inverter import AEConversionInverterThread
@@ -37,6 +36,10 @@ class InverterController():
 
         self.battery_inverter_relay_ac = GpioPin(pin=config['aeconversion_inverter']['gpio_pin'])
 
+        self.is_running = False
+        signal.signal(signal.SIGINT, self.stop)
+        signal.signal(signal.SIGTERM, self.stop)
+
         self.logger.info('init done')
 
     def go_idle(self):
@@ -53,6 +56,8 @@ class InverterController():
             self.logger.error('no data from energy meter')
             self.go_idle()
             return False
+
+        notify(Notification.WATCHDOG)
 
         em_import = self.energy_meter.data['p_import']
         em_export = self.energy_meter.data['p_export']
@@ -163,17 +168,21 @@ class InverterController():
         time.sleep(5)
         return True
 
-    def stop(self):
+    def stop(self, *args):
+        self.logger.info("Stopping...")
+        notify(Notification.STOPPING)
+        self.is_running = False
         self.energy_meter.stop()
         self.battery_inverter.stop()
         self.battery_inverter_relay_ac.set_state(False)
+        self.logger.info("Stopped")
 
     def loop(self):
-        while True:
+        self.is_running = True
+        notify(Notification.READY)
+        while self.is_running:
             try:
                 self.loop_run()
                 time.sleep(30)
             except KeyboardInterrupt:
-                break
-
-        self.stop()
+                self.stop()

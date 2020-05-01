@@ -57,8 +57,10 @@ class SMAEnergyManager:
             return serial_number, data['sum']
 
     def stop(self):
-        self.sock.close()
-        print('SMAEnergyManager: socket closed')
+        if self.sock:
+            self.sock.close()
+            print('SMAEnergyManager: socket closed')
+            self.sock = None
 
 
 class SMAEnergyManagerThread(threading.Thread):
