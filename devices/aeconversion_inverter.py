@@ -349,7 +349,7 @@ class AEConversionInverter:
 
 
 class AEConversionInverterThread(threading.Thread):
-    def __init__(self, config, metrics):
+    def __init__(self, config, metrics, logger):
         threading.Thread.__init__(self)
         self.is_running = False
         self.start_time = None
@@ -357,12 +357,13 @@ class AEConversionInverterThread(threading.Thread):
         self.last_connection_attempt = 0
         self.data = {}
         self.command_queue = []
+        self.logger = logger
         self.inverter = AEConversionInverter(device=config['device'],
                                              inverter_id=config['inverter_id'])
         self.metrics = metrics
 
     def stop(self):
-        print('AEConversionInverterThread: stopping...')
+        self.logger.info('AEConversionInverterThread: stopping...')
         self.is_running = False
         self.inverter.stop()
 
@@ -371,21 +372,22 @@ class AEConversionInverterThread(threading.Thread):
         self.start_time = time.time()
         self.is_connected = False
         while self.is_running:
+            #print("run")
             if not self.inverter.device_parameters:
                 try:
                     self.last_connection_attempt = time.time()
                     self.inverter.connect()
                 except Exception as e:
-                    print('failed to connect')
+                    self.logger.error('failed to connect')
                     print(e)
                     return False
                 time.sleep(10)
                 continue
-
+            #print(self.command_queue)
             retry_queue = []
             while len(self.command_queue) > 0:
                 if not self.is_healthy():
-                    print("AEConversionInverterThread: unhealthy, not executing commands")
+                    self.logger.error("AEConversionInverterThread: unhealthy, not executing commands")
                     print(self.command_queue)
                     break
                 command, kwargs = self.command_queue.pop(0)
@@ -415,7 +417,7 @@ class AEConversionInverterThread(threading.Thread):
             try:
                 data = self.inverter.get_data(verbose=False)
             except serial.serialutil.SerialException:
-                print('AEConversionInverterThread: failed to get data from inverter')
+                self.logger.error('AEConversionInverterThread: failed to get data from inverter')
                 data = False
             if data is not False:
                 self.is_connected = True
@@ -436,7 +438,7 @@ class AEConversionInverterThread(threading.Thread):
                 self.metrics.write_metric(points=points)
 
             time.sleep(10)
-        print('AEConversionInverterThread: stopped')
+        self.logger.info('AEConversionInverterThread: stopped')
 
     def queue_command(self, command, args):
         self.command_queue.append([command, args])
@@ -448,9 +450,9 @@ class AEConversionInverterThread(threading.Thread):
             return False
         t_diff = time.time() - self.data['time']
         if t_diff > 120.0:
-            print('AEConversionInverterThread: no data for %s seconds' % int(time.time() - self.data['time']))
+            self.logger.warning('AEConversionInverterThread: no data for %s seconds' % int(time.time() - self.data['time']))
         if t_diff > 60.0:
-            print("reconnecting")
+            self.logger.warning("reconnecting")
             self.inverter.stop()
             if time.time() - self.last_connection_attempt < 60:
                 self.last_connection_attempt = time.time()
