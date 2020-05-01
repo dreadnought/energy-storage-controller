@@ -5,7 +5,7 @@ from devices.pwm_rockpis import PWM
 from devices.sma_energy_manager import SMAEnergyManagerThread
 
 from cysystemd.daemon import notify, Notification
-
+import signal
 
 class Throttler():
     def __init__(self, min_sec):
@@ -39,6 +39,7 @@ class ChargeController():
         self.metrics = metrics
         self.smart_plug = smart_plug
         self.pwm = PWM(logger=logger)
+        self.is_running = False
 
         self.logger.info("%s %s" % (self.smart_plug.state, self.smart_plug.now_power))
         self.init_energy_meter()
@@ -63,6 +64,9 @@ class ChargeController():
         }
         self.min_level = min(self.levels.keys())
         self.off_throttler = Throttler(60 * 5)
+
+        signal.signal(signal.SIGINT, self.stop)
+        signal.signal(signal.SIGTERM, self.stop)
 
     def init_energy_meter(self):
         self.logger.info("Connecting to energy meter")
@@ -94,11 +98,15 @@ class ChargeController():
             self.pwm.set_pwm_volt(new_v)
         return new_v, level
 
-    def stop(self):
+    def stop(self, *args):
+        self.logger.info("Stopping...")
+        notify(Notification.STOPPING)
+        self.is_running = False
         self.energy_meter.stop()
-        # self.smart_plug.state = "OFF"
+        self.smart_plug.state = "OFF"
         # if the charger turns on while the controller isn't running, limit it as much as possible
         self.pwm.set_pwm_volt(1.0)
+        self.logger.info("Stopped")
 
     def sleep_until_tomorrow(self):
         now = datetime.datetime.utcnow()
@@ -115,8 +123,9 @@ class ChargeController():
     def loop(self):
         WATT_RESERVED = 50  # leave power for other devices
         LOOP_RUN_SEC = 30
+        self.is_running = True
         notify(Notification.READY)
-        while True:
+        while self.is_running:
             if len(self.energy_meter.data) == 0:
                 self.logger.warning("No energy meter data")
                 time.sleep(10)
