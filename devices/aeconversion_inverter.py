@@ -318,10 +318,14 @@ class AEConversionInverter:
             watt_max = increase
 
         calculated_limit = min(used_watt + watt_tolerance, watt_max)
+        force_limit = False
         if calculated_limit < 0:
             calculated_limit = 10
+            if self.last_limit != 10:
+                force_limit = True
 
-        if self.last_limit and math.isclose(calculated_limit, self.last_limit, abs_tol=watt_tolerance):
+        is_in_tolerance = math.isclose(calculated_limit, self.last_limit, abs_tol=watt_tolerance)
+        if self.last_limit and is_in_tolerance and not force_limit:
             print('current limit (%0.2f) in tolerance' % self.last_limit)
         else:
             if not self.last_limit:

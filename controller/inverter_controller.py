@@ -122,7 +122,7 @@ class InverterController():
             if now.hour > 11 and now.hour < 16:
                 self.logger.debug('charging time, not activating')
             elif self.smart_plug.state == 'ON':
-                print("Charger is running, not activating inverter", flush=True)
+                self.logger.info("Charger is running, not activating inverter")
                 return
             elif battery_level > 25 and em_import > watt_inverter_start:
                 # turn on inverter AC if the battery is at least 40% and we need energy
