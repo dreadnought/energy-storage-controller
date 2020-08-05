@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 import time
 from datetime import datetime
-import pytz
 from cysystemd.daemon import notify, Notification
 import signal
 
@@ -9,16 +8,14 @@ from devices.sma_energy_manager import SMAEnergyManagerThread
 from devices.aeconversion_inverter import AEConversionInverterThread
 from devices.gpio import GpioPin
 from pyedimax.smartplug import SmartPlug
-from config import config
 from metrics import Metrics
-
-tz = pytz.timezone('Europe/Berlin')
 
 
 class InverterController():
-    def __init__(self, config, logger):
+    def __init__(self, config, logger, tz):
         self.config = config
         self.logger = logger
+        self.tz = tz
         self.logger.info('init...')
         self.metrics = Metrics(database_name=self.config['influxdb']['database_name'])
         self.logger.info('energy meter...')
@@ -49,7 +46,7 @@ class InverterController():
         self.logger.debug('Inverter relay off')
 
     def loop_run(self):
-        self.logger.debug('==== start of run %s ====' % datetime.now(tz))
+        self.logger.debug('==== start of run %s ====' % datetime.now(self.tz))
         watt_tolerance = 20
         watt_inverter_start = 100
         if not self.energy_meter.is_healthy():
@@ -118,7 +115,7 @@ class InverterController():
             self.logger.debug("On")
         else:
             self.logger.debug("Off")
-            now = datetime.now(tz)
+            now = datetime.now(self.tz)
             if now.hour > 11 and now.hour < 16:
                 self.logger.debug('charging time, not activating')
             elif self.smart_plug.state == 'ON':
@@ -158,9 +155,9 @@ class InverterController():
             self.logger.warning("invalid ac_watt value")
             new_limit = 100
         elif self.battery_inverter.inverter.last_limit:
-            new_limit = self.battery_inverter.inverter.last_limit - config['aeconversion_inverter']['limit_step']
+            new_limit = self.battery_inverter.inverter.last_limit - self.config['aeconversion_inverter']['limit_step']
         else:
-            new_limit = self.battery_inverter.data['ac_watt'] - config['aeconversion_inverter']['limit_step']
+            new_limit = self.battery_inverter.data['ac_watt'] - self.config['aeconversion_inverter']['limit_step']
         if new_limit < 10:
             self.logger.warning("low voltage")
             return False

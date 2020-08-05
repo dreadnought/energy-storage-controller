@@ -2,7 +2,8 @@
   "aeconversion_inverter": {
     "inverter_id": 123,
     "device": "/dev/serial/by-id/usb",
-    "limit_step": 50
+    "limit_step": 50,
+    "gpio_pin": 64
   },
   "sma_energy_manager": {
     "serial_number": 1234567890
@@ -20,9 +21,15 @@
   "charger": {
     "smartplug_ip": "192.168.1.2",
     "smartplug_username": "admin",
-    "smartplug_password": "password"
+    "smartplug_password": "password",
+    "start_watt_limit": 600,
+    "start_hour": 8,
+    "sleep_hour": 19
   },
   "bms": {
     "mac_address": "AA:BB:CC:DD:EE:FF"
+  },
+  "general": {
+    "time_zone": "Europe/Berlin"
   }
 }

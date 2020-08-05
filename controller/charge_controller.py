@@ -33,11 +33,12 @@ class Throttler():
 
 
 class ChargeController():
-    def __init__(self, config, logger, metrics, smart_plug):
+    def __init__(self, config, logger, metrics, smart_plug, tz):
         self.config = config
         self.logger = logger
         self.metrics = metrics
         self.smart_plug = smart_plug
+        self.tz = tz
         self.pwm = PWM(logger=logger)
         self.is_running = False
 
@@ -109,7 +110,7 @@ class ChargeController():
         self.logger.info("Stopped")
 
     def sleep_until_tomorrow(self):
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(self.tz)
         tomorrow = now.replace(hour=4, minute=0) + datetime.timedelta(days=1)
         seconds_left = tomorrow.timestamp() - time.time()
         self.logger.info("Sleeping %0.1f hours" % (seconds_left / 3600))
@@ -145,12 +146,15 @@ class ChargeController():
 
             if self.smart_plug.state == 'OFF':
                 self.logger.info("Charger off")
-                if balance > 500:
+                if datetime.datetime.now(self.tz).hour < self.config["charger"]["start_hour"]:
+                    time.sleep(LOOP_RUN_SEC)
+                    continue
+                elif balance > self.config["charger"]["start_watt_limit"]:
                     # todo: check inverter state
                     self.logger.info("Turning on smart plug")
                     self.smart_plug.state = 'ON'
                     self.off_throttler.reset()
-                elif datetime.datetime.now().hour >= 19:
+                elif datetime.datetime.now(self.tz).hour >= self.config["charger"]["sleep_hour"]:
                     self.sleep_until_tomorrow()
                     continue
                 else:
@@ -161,7 +165,7 @@ class ChargeController():
             charger_power = float(self.smart_plug.now_power)
             available_charging_power = balance - WATT_RESERVED + charger_power
 
-            if charger_power > 50 and charger_power < self.min_level - 50:
+            if 10 < charger_power < 200:
                 if self.off_throttler.trigger():
                     self.logger.info("Fully charged, turning off smart plug")
                     self.smart_plug.state = 'OFF'
