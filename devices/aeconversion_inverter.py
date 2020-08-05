@@ -176,7 +176,7 @@ class AEConversionInverter:
 
         if not response_bytes:
             return False
-        elif len(response_bytes) < 36 or len(response_bytes) > 37:
+        elif len(response_bytes) < 36 or len(response_bytes) > 38:
             print("get_data: invalid length %s" % len(response_bytes))
             print("get_data: %s" % response_bytes.hex())
             return False
@@ -195,10 +195,14 @@ class AEConversionInverter:
         }
 
         if data['pv_watt'] > self.device_parameters['max_watt'] * 2 or data['ac_watt'] > self.device_parameters[
-            'max_watt'] * 2 or data['temperature'] > 1000:
+            'max_watt'] * 2:
             if verbose:
-                print('get_data: invalid data' % data)
+                print('get_data: invalid data %s' % data)
             return False
+        if data['temperature'] > 1000:
+            if verbose:
+                print('get_data: invalid temperature reading %s' % data['temperature'])
+            data['temperature'] = 0.0
 
         data['time'] = time.time()
         self.metrics = data
