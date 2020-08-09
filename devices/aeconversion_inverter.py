@@ -1,6 +1,7 @@
 import math
 import serial
 import struct
+import sys
 import threading
 import time
 import traceback
@@ -70,7 +71,7 @@ disturb_codes = (
 
 
 class AEConversionInverter:
-    def __init__(self, device, inverter_id):
+    def __init__(self, device, inverter_id, request_retries=5, exit_after_retries=False):
         self.serial = None
         self.device = device
         self.inverter_id = inverter_id
@@ -79,28 +80,58 @@ class AEConversionInverter:
         self.device_parameters = None
         self.last_limit = None  # last set limit in watt
         self.last_limit_change = None  # time when the last limit was set
+        self.request_retries = request_retries
+        self.exit_after_retries = exit_after_retries
 
-    def _c_crc(self, message_hex):
+    @staticmethod
+    def _calc_crc(message_bytes):
         x = 0
-        m = self.inverter_id_bytes + message_hex
+        for b in message_bytes:
+            x ^= b
 
-        for i in range(0, len(m)):
-            x ^= m[i]
+        return x
 
-        _crc_hex = x.to_bytes(2, byteorder='big')
-        _data_hex = b"\x21" + self.inverter_id_bytes + message_hex + _crc_hex + b"\x0D"
+    def _calc_request_crc(self, message_bytes):
+        m = self.inverter_id_bytes + message_bytes
+        crc_int = self._calc_crc(m)
+        crc_hex = crc_int.to_bytes(2, byteorder='big')
+
+        _data_hex = b"\x21" + self.inverter_id_bytes + message_bytes + crc_hex + b"\x0D"
         return _data_hex
+
+    def _read_request(self, message_bytes, init=False, min_length=4):
+        response_bytes = None
+        errors = []
+        for x in range(0, self.request_retries):
+            response_bytes, response_error = self._read(
+                message_bytes=message_bytes,
+                init=init,
+                min_length=min_length)
+            errors.append(response_error)
+            if not response_bytes:
+                time.sleep(1)
+            else:
+                #print("%x try successful" % (x +1))
+                break
+        if not response_bytes:
+            print('failed after %s tries' % (x + 1))
+            print('Errors: %s' % ', '.join(errors))
+            if self.exit_after_retries is True:
+                sys.exit()
+            else:
+                return False
+        return response_bytes
 
     def _read(self, message_bytes, init=False, min_length=4):
         if not init and not self.device_parameters:
             # check that we are talking to a valid device
             print('Not connected')
-            return False
+            return False, 'not-connected'
 
         if not self.serial.isOpen():
             self.serial.open()
 
-        full_message = self._c_crc(message_bytes)
+        full_message = self._calc_request_crc(message_bytes)
         self.serial.reset_input_buffer()
         self.serial.reset_output_buffer()
         self.serial.write(full_message)
@@ -121,9 +152,16 @@ class AEConversionInverter:
 
         if len(response_bytes) == 0:
             print('No response received')
-            return False
+            return False, 'empty'
 
-        return response_bytes
+        received_crc = response_bytes[-1]
+        calculated_crc = self._calc_crc(response_bytes[1:-1])
+
+        if received_crc != calculated_crc:
+            print("Checksum wrong, %s received vs. %s calculated" % (received_crc, calculated_crc))
+            return False, "crc"
+
+        return response_bytes, None
 
     @staticmethod
     def _decode_value(i):
@@ -172,11 +210,11 @@ class AEConversionInverter:
 
     def get_data(self, verbose=True):
         message = b"\x03\xED"
-        response_bytes = self._read(message, min_length=36)
+        response_bytes = self._read_request(message, min_length=36)
 
         if not response_bytes:
             return False
-        elif len(response_bytes) < 36 or len(response_bytes) > 38:
+        elif len(response_bytes) < 36 or len(response_bytes) > 37:
             print("get_data: invalid length %s" % len(response_bytes))
             print("get_data: %s" % response_bytes.hex())
             return False
@@ -218,7 +256,7 @@ class AEConversionInverter:
         return codes
 
     def get_status(self):
-        response_bytes = self._read(b"\x03\xF0")
+        response_bytes = self._read_request(b"\x03\xF0")
 
         if not response_bytes:
             print('get_status failed')
@@ -247,8 +285,8 @@ class AEConversionInverter:
         return data
 
     def get_yield(self):
-        response_bytes = self._read(b"\x03\xFD")
-        if len(response_bytes) != 12:
+        response_bytes = self._read_request(b"\x03\xFD")
+        if response_bytes is False or len(response_bytes) != 12:
             return False
 
         parts = struct.unpack('>3x I I x', response_bytes)
@@ -259,7 +297,7 @@ class AEConversionInverter:
         return data
 
     def get_device_parameters(self):
-        response_bytes = self._read(b"\x03\xF6", init=True)
+        response_bytes = self._read_request(b"\x03\xF6", init=True)
         if not response_bytes:
             return False
 
@@ -281,7 +319,7 @@ class AEConversionInverter:
         _p = int(limit) * 2 ** 16
         message = message_bytes + _p.to_bytes(4, byteorder='big')
         try:
-            response_bytes = self._read(message)
+            response_bytes = self._read_request(message)
         except serial.serialutil.SerialException as e:
             print('setting limit failed')
             print(e)

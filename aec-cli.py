@@ -27,7 +27,9 @@ parser.add_argument("--retry", help="retry X times if the request fails, default
 args = parser.parse_args()
 
 inv = AEConversionInverter(inverter_id=args.inverter_id,
-                           device=args.device)
+                           device=args.device,
+                           request_retries=args.retry,
+                           exit_after_retries=True)
 
 if args.output in ('json', 'csv') or args.check:
     verbose = False
@@ -38,23 +40,8 @@ if not response:
     sys.exit(1)
 
 
-def request_retry(request):
-    data = None
-    retry = max(1, args.retry)
-    for x in range(0, retry):
-        data = request()
-        if not data:
-            time.sleep(1)
-        else:
-            break
-    if not data:
-        print('failed after %s tries' % (x + 1))
-        sys.exit(1)
-    return data
-
-
 if args.show_data:
-    data = request_retry(inv.get_data)
+    data = inv.get_data()
 
     if args.output == 'csv':
         print(";".join(data.keys()))
@@ -76,7 +63,7 @@ if args.show_data:
     sys.exit()
 
 if args.show_status:
-    status = request_retry(inv.get_status)
+    status = inv.get_status()
 
     if args.output == 'csv':
         print('Not implemented')
@@ -99,7 +86,7 @@ if args.show_status:
     sys.exit()
 
 if args.show_yield:
-    y = request_retry(inv.get_yield)
+    y = inv.get_yield()
     if args.output == 'csv':
         print('Not implemented')
         sys.exit(1)
@@ -111,12 +98,12 @@ if args.show_yield:
     sys.exit()
 
 if args.check:
-    status = request_retry(inv.get_status)
+    status = inv.get_status()
     status_code = 0  # OK
     status_codes = ('OK', 'WARNING', 'CRITICAL', 'UNKNOWN')
     status_line = ''
 
-    data = request_retry(inv.get_data)
+    data = inv.get_data()
     perfdata = []
     if data:
         for key, value in data.items():
