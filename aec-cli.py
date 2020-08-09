@@ -23,19 +23,17 @@ parser.add_argument("--check", help="Nagios style check", action="store_true")
 parser.add_argument("--set-limit", help="set limit to X watt", type=int)
 parser.add_argument("--output", help="text (default), csv, json output for show commands", type=str, default="text")
 parser.add_argument("--retry", help="retry X times if the request fails, default 5", type=int, default=5)
+parser.add_argument("--verbose", help="Verbose output", action="store_true")
 
 args = parser.parse_args()
 
 inv = AEConversionInverter(inverter_id=args.inverter_id,
                            device=args.device,
                            request_retries=args.retry,
-                           exit_after_retries=True)
+                           exit_after_retries=True,
+                           verbose=args.verbose)
 
-if args.output in ('json', 'csv') or args.check:
-    verbose = False
-else:
-    verbose = True
-response = inv.connect(verbose=verbose)
+response = inv.connect()
 if not response:
     sys.exit(1)
 

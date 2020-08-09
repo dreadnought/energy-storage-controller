@@ -71,7 +71,7 @@ disturb_codes = (
 
 
 class AEConversionInverter:
-    def __init__(self, device, inverter_id, request_retries=5, exit_after_retries=False):
+    def __init__(self, device, inverter_id, request_retries=5, exit_after_retries=False, verbose=True):
         self.serial = None
         self.device = device
         self.inverter_id = inverter_id
@@ -82,6 +82,7 @@ class AEConversionInverter:
         self.last_limit_change = None  # time when the last limit was set
         self.request_retries = request_retries
         self.exit_after_retries = exit_after_retries
+        self.verbose = verbose
 
     @staticmethod
     def _calc_crc(message_bytes):
@@ -109,12 +110,13 @@ class AEConversionInverter:
                 min_length=min_length)
             errors.append(response_error)
             if not response_bytes:
+                print("%x. try failed, retrying..." % (x + 1))
                 time.sleep(1)
             else:
-                #print("%x try successful" % (x +1))
+                # print("%x try successful" % (x +1))
                 break
         if not response_bytes:
-            print('failed after %s tries' % (x + 1))
+            print('Failed after %s tries' % (x + 1))
             print('Errors: %s' % ', '.join(errors))
             if self.exit_after_retries is True:
                 sys.exit()
@@ -140,7 +142,8 @@ class AEConversionInverter:
         while True:
             b = self.serial.read(1)
             if len(b) == 0:
-                print("Incomplete response read")
+                if self.verbose:
+                    print("Incomplete response read")
                 return False
             if b == b'\x0d' and len(response_bytes) >= min_length:
                 # valid/complete answers have to end with \x0d
@@ -151,14 +154,16 @@ class AEConversionInverter:
             response_bytes += b
 
         if len(response_bytes) == 0:
-            print('No response received')
+            if self.verbose:
+                print('No response received')
             return False, 'empty'
 
         received_crc = response_bytes[-1]
         calculated_crc = self._calc_crc(response_bytes[1:-1])
 
         if received_crc != calculated_crc:
-            print("Checksum wrong, %s received vs. %s calculated" % (received_crc, calculated_crc))
+            if self.verbose:
+                print("Checksum wrong, %s received vs. %s calculated" % (received_crc, calculated_crc))
             return False, "crc"
 
         return response_bytes, None
@@ -169,7 +174,7 @@ class AEConversionInverter:
             return None
         return round(i / 2 ** 16, 2)
 
-    def connect(self, verbose=True):
+    def connect(self):
         self.serial = serial.Serial(
             port=self.device,
             baudrate=9600,
@@ -193,7 +198,7 @@ class AEConversionInverter:
             print('Failed to connect to inverter %s over %s' % (self.inverter_id, self.serial.port))
             return False
 
-        if verbose:
+        if self.verbose:
             print('%s device, max. %sW, version %s' % (self.device_parameters['type'],
                                                        self.device_parameters['max_watt'],
                                                        self.device_parameters['version']))
@@ -208,15 +213,16 @@ class AEConversionInverter:
     def stop(self):
         self.serial.close()
 
-    def get_data(self, verbose=True):
+    def get_data(self):
         message = b"\x03\xED"
         response_bytes = self._read_request(message, min_length=36)
 
         if not response_bytes:
             return False
         elif len(response_bytes) < 36 or len(response_bytes) > 37:
-            print("get_data: invalid length %s" % len(response_bytes))
-            print("get_data: %s" % response_bytes.hex())
+            if self.verbose:
+                print("get_data: invalid length %s" % len(response_bytes))
+                print("get_data: %s" % response_bytes.hex())
             return False
 
         parts = struct.unpack('>3x I I I I I I I I x', response_bytes[:36])
@@ -234,11 +240,11 @@ class AEConversionInverter:
 
         if data['pv_watt'] > self.device_parameters['max_watt'] * 2 or data['ac_watt'] > self.device_parameters[
             'max_watt'] * 2:
-            if verbose:
+            if self.verbose:
                 print('get_data: invalid data %s' % data)
             return False
         if data['temperature'] > 1000:
-            if verbose:
+            if self.verbose:
                 print('get_data: invalid temperature reading %s' % data['temperature'])
             data['temperature'] = 0.0
 
@@ -418,7 +424,7 @@ class AEConversionInverterThread(threading.Thread):
         self.start_time = time.time()
         self.is_connected = False
         while self.is_running:
-            #print("run")
+            # print("run")
             if not self.inverter.device_parameters:
                 try:
                     self.last_connection_attempt = time.time()
@@ -429,7 +435,7 @@ class AEConversionInverterThread(threading.Thread):
                     return False
                 time.sleep(10)
                 continue
-            #print(self.command_queue)
+            # print(self.command_queue)
             retry_queue = []
             while len(self.command_queue) > 0:
                 if not self.is_healthy():
@@ -461,7 +467,7 @@ class AEConversionInverterThread(threading.Thread):
 
             self.command_queue.extend(retry_queue)
             try:
-                data = self.inverter.get_data(verbose=False)
+                data = self.inverter.get_data()
             except serial.serialutil.SerialException:
                 self.logger.error('AEConversionInverterThread: failed to get data from inverter')
                 data = False
@@ -496,7 +502,8 @@ class AEConversionInverterThread(threading.Thread):
             return False
         t_diff = time.time() - self.data['time']
         if t_diff > 120.0:
-            self.logger.warning('AEConversionInverterThread: no data for %s seconds' % int(time.time() - self.data['time']))
+            self.logger.warning(
+                'AEConversionInverterThread: no data for %s seconds' % int(time.time() - self.data['time']))
         if t_diff > 60.0:
             self.logger.warning("reconnecting")
             self.inverter.stop()
