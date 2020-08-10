@@ -144,7 +144,7 @@ class AEConversionInverter:
             if len(b) == 0:
                 if self.verbose:
                     print("Incomplete response read")
-                return False
+                return False, 'incomplete'
             if b == b'\x0d' and len(response_bytes) >= min_length:
                 # valid/complete answers have to end with \x0d
                 break
