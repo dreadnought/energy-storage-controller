@@ -119,7 +119,7 @@ class AEConversionInverter:
             print('Failed after %s tries' % (x + 1))
             print('Errors: %s' % ', '.join(errors))
             if self.exit_after_retries is True:
-                sys.exit()
+                sys.exit(1)
             else:
                 return False
         return response_bytes
@@ -219,10 +219,12 @@ class AEConversionInverter:
 
         if not response_bytes:
             return False
-        elif len(response_bytes) < 36 or len(response_bytes) > 37:
+        elif len(response_bytes) < 36 or len(response_bytes) > 38:
             if self.verbose:
                 print("get_data: invalid length %s" % len(response_bytes))
                 print("get_data: %s" % response_bytes.hex())
+            if self.exit_after_retries is True:
+                sys.exit(1)
             return False
 
         parts = struct.unpack('>3x I I I I I I I I x', response_bytes[:36])
