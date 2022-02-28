@@ -72,7 +72,7 @@ class ChargeController():
     def init_energy_meter(self):
         self.logger.info("Connecting to energy meter")
         self.energy_meter = SMAEnergyManagerThread(serial_number=self.config['sma_energy_manager']['serial_number'],
-                                                   metrics=None)
+                                                   metrics=None, logger=self.logger)
         self.energy_meter.start()
         time.sleep(1)
 
@@ -165,7 +165,7 @@ class ChargeController():
             charger_power = float(self.smart_plug.now_power)
             available_charging_power = balance - WATT_RESERVED + charger_power
 
-            if 10 < charger_power < 200:
+            if 10 < charger_power < self.config["charger"]["off_watt_limit"]:
                 if self.off_throttler.trigger():
                     self.logger.info("Fully charged, turning off smart plug")
                     self.smart_plug.state = 'OFF'

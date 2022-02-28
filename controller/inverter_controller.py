@@ -20,7 +20,7 @@ class InverterController():
         self.metrics = Metrics(database_name=self.config['influxdb']['database_name'])
         self.logger.info('energy meter...')
         self.energy_meter = SMAEnergyManagerThread(serial_number=config['sma_energy_manager']['serial_number'],
-                                                   metrics=self.metrics)
+                                                   metrics=self.metrics, logger=logger)
         self.energy_meter.start()
         self.logger.info('battery inverter...')
         self.battery_inverter = AEConversionInverterThread(config=config['aeconversion_inverter'],

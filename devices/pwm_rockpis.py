@@ -1,7 +1,8 @@
-import subprocess
 import sys
 import os
 
+# edit /boot/hw_intfc.conf
+# set intfc:pwm2=on
 BASE_DIR = "/sys/class/pwm/pwmchip1/pwm0/"
 BASE_VOLTAGE = 3.33
 BASE_FACTOR = 98140
@@ -43,8 +44,10 @@ class PWM():
 
         return volt
 
+
 if __name__ == '__main__':
     import logging
+
     pwm = PWM(logger=logging)
     pwm.pwm_init()
     pwm.set_pwm_volt(float(sys.argv[1]))

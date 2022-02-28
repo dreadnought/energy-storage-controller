@@ -5,8 +5,9 @@ import time
 
 
 class SMAEnergyManager:
-    def __init__(self):
+    def __init__(self, logger):
         self.sock = None
+        self.logger = logger
 
     def connect(self):
         if self.sock:
@@ -20,6 +21,9 @@ class SMAEnergyManager:
 
     def parse_block_bytes(self, block_bytes, counter=False):
         block_data = {}
+        if len(block_bytes) < 116:
+            self.logger.warning("response length %i < 116 bytes, counter=%i" % (len(block_bytes), counter))
+            return
         result = struct.unpack('>I 4x Q 4x I 4x Q 4x L 4x Q 4x I 4x Q 4x I 4x Q 4x I 4x Q', block_bytes[:116])
 
         x = 0
@@ -41,8 +45,14 @@ class SMAEnergyManager:
         return block_data
 
     def read(self, phases, counter=False):
-        message_bytes = self.sock.recv(600)
+        message_bytes = self.sock.recv(608)
         serial_number = struct.unpack('>I', message_bytes[20:24])[0]
+
+        if len(message_bytes) == 58:
+            return False, False
+        elif len(message_bytes) < 558:
+            self.logger.warning("response length %i < 558 bytes, phases=%s, counter=%s" % (len(message_bytes), phases, counter))
+            return False, False
 
         data = {}
         data['time'] = time.time()
@@ -59,15 +69,16 @@ class SMAEnergyManager:
     def stop(self):
         if self.sock:
             self.sock.close()
-            print('SMAEnergyManager: socket closed')
+            self.logger.info('SMAEnergyManager: socket closed')
             self.sock = None
 
 
 class SMAEnergyManagerThread(threading.Thread):
-    def __init__(self, serial_number, metrics):
+    def __init__(self, serial_number, metrics, logger):
         threading.Thread.__init__(self)
         self.is_running = False
-        self.smaem = SMAEnergyManager()
+        self.logger = logger
+        self.smaem = SMAEnergyManager(logger=logger)
         self.data = {}
         self.start_time = None
         if serial_number:
@@ -78,7 +89,7 @@ class SMAEnergyManagerThread(threading.Thread):
         self.last_metrics = 0
 
     def stop(self):
-        print('SMAEnergyManagerThread stopping...')
+        self.logger.info('SMAEnergyManagerThread stopping...')
         self.is_running = False
         self.smaem.stop()
 
@@ -88,6 +99,8 @@ class SMAEnergyManagerThread(threading.Thread):
         self.smaem.connect()
         while self.is_running:
             serial_number, data = self.smaem.read(phases=False)
+            if data is False:
+                continue
             if self.serial_number:
                 self.data = data
                 points = []
@@ -95,19 +108,19 @@ class SMAEnergyManagerThread(threading.Thread):
                 ts = data_copy['time']
                 del data_copy['time']
                 points.append({
-                        "measurement": "SMAEnergyManagerSum",
-                        "tags": {
-                            "serial_number": self.serial_number,
-                        },
-                        "time": ts,
-                        "fields": data_copy,
+                    "measurement": "SMAEnergyManagerSum",
+                    "tags": {
+                        "serial_number": self.serial_number,
+                    },
+                    "time": ts,
+                    "fields": data_copy,
                 })
                 if time.time() - self.last_metrics > 5 and self.metrics:
                     self.metrics.write_metric(points=points)
                     self.last_metrics = time.time()
             else:
                 self.data[serial_number] = data
-        print('SMAEnergyManagerThread stopped')
+        self.logger.info('SMAEnergyManagerThread stopped')
 
     def is_healthy(self):
         if not self.is_running:
@@ -116,19 +129,22 @@ class SMAEnergyManagerThread(threading.Thread):
             return False
         t_diff = time.time() - self.data['time']
         if t_diff > 120.0:
-            print('SMAEnergyManagerThread: no data for %s seconds' % int(time.time() - self.data['time']))
+            self.logger.warning('SMAEnergyManagerThread: no data for %s seconds' % int(time.time() - self.data['time']))
             return False
         elif t_diff > 60.0:
-            print('SMAEnergyManagerThread: reconnecting')
+            self.logger.warning('SMAEnergyManagerThread: reconnecting')
             self.smaem.connect()
             return False
 
         return True
 
+
 if __name__ == '__main__':
     from pprint import pprint
+    from logger import get_logger
+    logger = get_logger(level='info')
 
-    smaem_thread = SMAEnergyManagerThread(serial_number=None)
+    smaem_thread = SMAEnergyManagerThread(serial_number=None, logger=logger, metrics=None)
     smaem_thread.start()
     while True:
         pprint(smaem_thread.data)

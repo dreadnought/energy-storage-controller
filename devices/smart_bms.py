@@ -188,7 +188,7 @@ class AnyDevice(gatt.Device):
         pass
 
     def characteristic_write_value_failed(self, characteristic, error):
-        self.logger.error("write failed", error)
+        self.logger.error("write failed %s" % error)
 
     def characteristic_value_updated(self, characteristic, value):
         # print("value:", len(value), repr(value))
@@ -218,7 +218,11 @@ class BluetoothThread(threading.Thread):
         self.logger.info('BluetoothThread: stopped')
 
     def write(self, request_bytes):
-        self.device.c_write.write_value(request_bytes)
+        try:
+            self.device.c_write.write_value(request_bytes)
+        except AttributeError as e:
+            self.logger.error("Writing '%s' to bluetooth device failed" % request_bytes)
+            self.logger.error(e)
 
 
 class SmartBMSThread(threading.Thread):

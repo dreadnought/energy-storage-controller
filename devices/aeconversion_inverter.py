@@ -442,10 +442,10 @@ class AEConversionInverterThread(threading.Thread):
             while len(self.command_queue) > 0:
                 if not self.is_healthy():
                     self.logger.error("AEConversionInverterThread: unhealthy, not executing commands")
-                    print(self.command_queue)
+                    self.logger.debug(self.command_queue)
                     break
                 command, kwargs = self.command_queue.pop(0)
-                print(command, kwargs)
+                self.logger.debug(command, kwargs)
                 try:
                     if command == 'set_limit':
                         result = self.inverter.set_limit(**kwargs)
@@ -456,15 +456,17 @@ class AEConversionInverterThread(threading.Thread):
                         print('unknown command "%s" in queue' % command)
                         result = False
                 except Exception as e:
-                    print(e)
-                    print(traceback.format_exc())
+                    self.logger.error(e)
+                    self.logger.error(traceback.format_exc())
                     result = False
                 if result is False:
-                    print('%s failed' % command)
+                    self.logger.error('%s failed' % command)
                     # todo: if failure count > 5: drop
                     retry_queue.append((command, kwargs))
+                    time.sleep(5)
                 else:
                     # skip reading data
+                    time.sleep(1)
                     continue
 
             self.command_queue.extend(retry_queue)
@@ -507,9 +509,10 @@ class AEConversionInverterThread(threading.Thread):
             self.logger.warning(
                 'AEConversionInverterThread: no data for %s seconds' % int(time.time() - self.data['time']))
         if t_diff > 60.0:
-            self.logger.warning("reconnecting")
+            self.logger.warning("disconnecting")
             self.inverter.stop()
-            if time.time() - self.last_connection_attempt < 60:
+            if time.time() - self.last_connection_attempt > 60:
+                self.logger.warning("reconnecting")
                 self.last_connection_attempt = time.time()
                 self.inverter.connect()
                 time.sleep(10)
